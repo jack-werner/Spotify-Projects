@@ -70,6 +70,7 @@ class GetSpotifyData:
         offset = 0
         playlists = []
         while(offset < N):
+            # print(offset)
             limit = min(50, N-offset)
             try:
                 res = self.spotipy_search_playlists(
@@ -98,30 +99,48 @@ class GetSpotifyData:
                 'Authorization': f'Bearer {self.token}'
             },
         )
-        return response.json()
+        if response.status_code == 200:  # Can still get OK from empty response.
+            return response.json()
+        else:
+            print('Error:')
+            print(response.status_code)
+            print(response.reason)
+            return None
 
     def get_all_playlists_tracks(self, playlist_id):
+        # print(playlist_id)
         total = sys.maxsize
         tracks_list = []
         offset = 0
         while offset < total:
+            # print(offset)
             limit = min(100, total-offset)
             try:
+                # print('fetching chunk of tracks')
                 res = self.get_playlist_tracks(
                     playlist_id, offset=offset, limit=limit)
                 tracks = pd.DataFrame(res['tracks']['items'])
                 total = res['tracks']['total']
-                tracks_list += list(tracks['track'])
+                if not tracks.empty:
+                    # filter out Nones
+                    tracks_list += list(filter(None, tracks['track']))
             except Exception:
-                print('Search Failed')
+                print('Failed to retrieve tracks.')
                 traceback.print_exc()
                 break
             offset += limit
 
-        tracks_df = pd.DataFrame(tracks_list)
-        tracks_df = self.unravel_dict_columns(tracks_df, ['artists', 'album'])
-        tracks_df['playlist_id'] = playlist_id
-        return tracks_df
+        if len(tracks_list) > 0:
+            tracks_df = pd.DataFrame(tracks_list)
+            # print(tracks_df.shape)
+            # print(tracks_df.columns)
+            tracks_df = self.unravel_dict_columns(
+                tracks_df, ['artists', 'album'])
+            tracks_df['playlist_id'] = playlist_id
+            return tracks_df
+        else:
+            # return empty df for compatibility with get_all_tracks_from_allplaylists
+            return pd.DataFrame()
 
     def get_all_tracks_from_all_playlists(self, playlist_df):
         playlist_df = playlist_df.copy()
@@ -173,22 +192,25 @@ class GetSpotifyData:
         offset = 0
         features = []
         while(offset < total):
-            print('offset:', offset)
-            print('total:', total)
+            # print('offset:', offset)
+            # print('total:', total)
             window = min(100, total-offset)
             chunk = ids[offset:offset+window]
             try:
-                print('getting chunk')
+                # print('getting chunk')
                 res = self.get_batch_audio_features(chunk)
-                print('adding features')
+                # print('adding features')
                 features += res['audio_features']
             except Exception:
                 print('Search Failed')
                 traceback.print_exc()
                 break
             offset += window
-
+        # print('about to make df')
+        # filter Nones from features_list
+        features = list(filter(None, features))
         features_df = pd.DataFrame(features)
+        # print('df creation successful')
 
         return df.merge(features_df, left_on=column, right_on='id', suffixes=('_track', '_feature'))
 
@@ -222,104 +244,17 @@ audio_features = s.get_batch_audio_features(house_tracks_sample)
 pd.DataFrame(audio_features['audio_features'])
 
 ############################################################
+playlist_id = '6ZSE0F0CEWHDAHOVZjrZVh'
+s.get_all_playlists_tracks(playlist_id)
 
-offset = 21600
-total = 21636
-window = total-offset
-chunk = house_tracks_and_playlists['id_track'][offset:offset+window]
-test_features = s.get_batch_audio_features(chunk)
+tracks = s.get_all_playlists_tracks(playlist_id)
 
-for i in house_tracks_and_playlists['id_track'][11100:11200]:
-    print(i)
+df = pd.DataFrame(tracks)
+df.head()
 
-house = s.search_playlists('deep house', limit=50)
-s.spotipy_search_playlists('deep house', 50, 0)
+df = pd.DataFrame(tracks[2:])
 
-s.sp.search('deep house', type='playlist')
+len(tracks)
 
-playlists = s.spotipy_search_playlists('deep house', 50, 0)
-type(playlists['playlists']['items'])
-
-playlist = s.sp.playlist('37i9dQZF1DX2TRYkJECvfC')
-len(playlist['tracks']['items'])
-
-
-yacht_joined = pd.concat([yacht, yacht_sub], axis=1)
-
-pd.concat([yacht, yacht_sub], axis=1)
-
-
-def unravel_dict_columns(df, columns):
-    df = df.copy()
-    for col in columns:
-        sub = pd.DataFrame(list(df[col]))
-        new_cols = [f'{col}_{c}' for c in sub.columns]
-        sub.columns = new_cols
-        df = pd.concat([df.drop(columns=col), sub], axis=1)
-
-    return df
-
-
-yacht_unraveled = unravel_dict_columns(yacht, 'tracks')
-yacht_unraveled
-
-
-def get_playlist_tracks(playlist_id):
-    res = s.sp.playlist(playlist_id)
-
-
-res = s.sp.playlist('37i9dQZF1DX2TRYkJECvfC')
-res.keys()
-res['tracks'].keys()
-len(res['tracks']['items'])
-
-res['tracks'].keys()
-res['tracks']['total']
-res['tracks']['next']
-
-
-def get_playlist_tracks(playlist_id, offset=0, limit=100):
-    url = 'https://api.spotify.com/v1/playlists/'
-    response = requests.get(
-        url+playlist_id,
-        params={
-            'offset': offset,
-            'limit': limit
-        },
-        headers={
-            'Authorization': f'Bearer {s.token}'
-        },
-    )
-    return response.json()
-
-
-def get_all_playlists_tracks(playlist_id, offset=0, limit=100):
-    total = sys.maxsize
-    tracks_list = []
-    while offset < total:
-        limit = min(100, total-offset)
-        try:
-            res = self.get_playlist_tracks(
-                playlist_id, offset=offset, limit=limit)
-            tracks = pd.DataFrame(res['tracks']['items'])
-            tracks_list += list(tracks['track'])
-        except Exception:
-            print('Search Failed')
-            traceback.print_exc()
-            break
-        offset += limit
-
-
-res = get_playlist_tracks('37i9dQZF1DX2TRYkJECvfC')
-res2 = get_playlist_tracks('37i9dQZF1DX2TRYkJECvfC', offset=100)
-res['']
-res.keys()
-res['tracks'].keys()
-res['tracks']['next']
-
-res1_df = pd.DataFrame(res['tracks']['items'])
-res2_df = pd.DataFrame(res2['tracks']['items'])
-
-res1_tracks = pd.DataFrame(list(res1_df['track']))
-res1_tracks.columns
-s.unravel_dict_columns(res1_tracks, 'album').columns
+l = [1 if t == None else 0 for t in tracks]
+sum(l)
