@@ -2,6 +2,7 @@ import json
 import os
 import sys
 import traceback
+from functools import reduce
 
 import numpy as np
 import pandas as pd
@@ -221,9 +222,37 @@ class GetSpotifyData:
             suffixes=('_track', '_playlist')
         )
 
+    def reduce_strings(self, l, r):
+        if l and r:
+            # concatenate with pipe so as not to mess up csv storage
+            return f"{l} | {r}"
+        if not r:
+            # l will never not be null since the first name/id is never null
+            return l
+
+    def fix_artists(self, df, columns, keys=['id', 'name'], track_id_col='id_track'):
+        # fill artists columns nulls with empty dicts
+        original = df.copy()
+        df = df[columns+[track_id_col]].copy()
+
+        res = pd.DataFrame()
+        # append track id column to join back onto original df
+        res[track_id_col] = df[track_id_col]
+
+        for key in keys:
+            temp = pd.DataFrame()
+            for col in columns:
+                # replace nulls with empty dicts so we can apply get to them
+                df[col] = np.where(df[col].isnull(), {}, df[col])
+                temp[f'{key}_{col}'] = df[col].apply(lambda x: x.get(key,))
+            res[f"artist_{key}s"] = temp.apply(
+                lambda x: reduce(self.reduce_strings, x), axis=1)
+        res = res.drop_duplicates()
+
+        return original.merge(res, on=track_id_col, how='left')
+
     def get_track_associations(self, df):
         pass
-
 
         ###############################################################
 s = GetSpotifyData('credentials.json')
@@ -242,3 +271,43 @@ house_tracks_and_playlists = house_tracks_and_playlists[house_mask]
 
 house_features = s.get_all_tracks_audio_features(
     house_tracks_and_playlists, 'id_track')
+
+
+s.fix_artists(house_features, artist_cols)
+
+test_artists = fix_artists(house_features, artist_cols)
+test_artists
+test_artists.columns
+len(test_artists['id_track'].unique())
+
+
+house_features.columns
+artist_cols = ['artists_0', 'artists_1', 'artists_2',
+               'artists_3', 'artists_4', 'artists_5']
+
+
+test_artists.apply(lambda x: reduce(reduce_strings, x), axis=1)
+
+house_features[artist_cols].fillna({})
+
+sum(house_features['artists_5'].isna())
+
+house_features[~house_features['artists_5'].isna()]['artists_5']
+
+house_features[house_features['artists_0'].isna()][artist_cols+['id_track']]
+
+np.where(house_features['artists_5'].isna(), {}, house_features['artists_5'])
+
+test = house_features.copy()
+
+for col in artist_cols:
+    test[col] = np.where(test[col].isnull(), {}, test[col])
+
+test[artist_cols].head()
+
+test['artists_0'][0]
+
+reduce(lambda x, y: f"{x}|{test[y].get('id',)}", artist_cols, "")
+
+demo = pd.DataFrame([['A', 'B'], ['C', 'D']])
+reduce(lambda x, y: f"{demo[x]}|{demo[y]}", demo.columns)
