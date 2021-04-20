@@ -187,7 +187,7 @@ class GetSpotifyData:
             return
 
         df = df.copy()
-        ids = list(df[column])
+        ids = list(df[column].unique())
         total = len(ids) - 1
         offset = 0
         features = []
@@ -211,50 +211,34 @@ class GetSpotifyData:
         features = list(filter(None, features))
         features_df = pd.DataFrame(features)
         # print('df creation successful')
+        # rename id column of features_df
+        features_df = features_df.rename(columns={'id': 'track_id'})
 
-        return df.merge(features_df, left_on=column, right_on='id', suffixes=('_track', '_feature'))
+        return df.merge(
+            features_df,
+            left_on=column,
+            right_on='track_id',
+            suffixes=('_track', '_playlist')
+        )
+
+    def get_track_associations(self, df):
+        pass
 
 
-###############################################################
+        ###############################################################
 s = GetSpotifyData('credentials.json')
 s.authenticate()
+
+######################################################################
 house = s.get_N_playlists('deep house', 100)
 
 all_house_tracks = s.get_all_tracks_from_all_playlists(house)
 house_tracks_and_playlists = all_house_tracks.merge(house, left_on='playlist_id', right_on='id',
                                                     suffixes=('_track', '_playlist'))
 # s.get_N_playlists('shoegaze', 123)
-# yacht = s.get_N_playlists('yacht rock', 420)
-
-house_tracks_and_playlists = house_tracks_and_playlists[~house_tracks_and_playlists['id_track'].isna(
-)]
+# yacht = s.get_N_playlists('yacht rock', 33)
+house_mask = ~house_tracks_and_playlists['id_track'].isna()
+house_tracks_and_playlists = house_tracks_and_playlists[house_mask]
 
 house_features = s.get_all_tracks_audio_features(
     house_tracks_and_playlists, 'id_track')
-
-s.get_batch_audio_features(house_tracks_and_playlists['id_track'][21600:21636])
-
-house_tracks_and_playlists.columns
-
-tracks = s.get_all_playlists_tracks('37i9dQZF1DX2TRYkJECvfC')
-tracks.shape
-tracks.columns
-
-audio_features = s.get_batch_audio_features(house_tracks_sample)
-pd.DataFrame(audio_features['audio_features'])
-
-############################################################
-playlist_id = '6ZSE0F0CEWHDAHOVZjrZVh'
-s.get_all_playlists_tracks(playlist_id)
-
-tracks = s.get_all_playlists_tracks(playlist_id)
-
-df = pd.DataFrame(tracks)
-df.head()
-
-df = pd.DataFrame(tracks[2:])
-
-len(tracks)
-
-l = [1 if t == None else 0 for t in tracks]
-sum(l)
