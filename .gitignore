@@ -2,3 +2,4 @@ SpotifyGenrePlaylistAnalysis/credentials.json
 SpotifyGenrePlaylistAnalysis/venv
 SpotifyGenrePlaylistAnalysis/.cache
 venv
+.vscode
