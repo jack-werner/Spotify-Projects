@@ -3,3 +3,5 @@ SpotifyGenrePlaylistAnalysis/venv
 SpotifyGenrePlaylistAnalysis/.cache
 venv
 .vscode
+SpotifyGenrePlaylistAnalysis/__pycache__
+SpotifyGenrePlaylistAnalysis/.vscode

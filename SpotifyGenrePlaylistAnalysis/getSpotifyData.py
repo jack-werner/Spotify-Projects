@@ -308,7 +308,10 @@ class GetSpotifyData:
         consequents.columns = colnames
 
         tracks = pd.concat([antecedents, consequents], axis=0)
-        tracks = tracks.drop_duplicates().sort_values('support', ascending=False)
+        tracks = (tracks
+                  .drop_duplicates()
+                  .sort_values('support', ascending=False)
+                  .reset_index(drop=True))
 
         return (rules, tracks)
 
