@@ -9,6 +9,10 @@ import pandas as pd
 import requests
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
+import mlxtend
+from mlxtend.preprocessing import TransactionEncoder
+from mlxtend.frequent_patterns import apriori
+from mlxtend.frequent_patterns import association_rules
 
 
 class GetSpotifyData:
@@ -251,8 +255,64 @@ class GetSpotifyData:
 
         return original.merge(res, on=track_id_col, how='left')
 
-    def get_track_associations(self, df):
-        pass
+    def get_track_associations(self, df, min_sup, playlist_id='playlist_id', track_id='id_track'):
+        playlists = list(df.groupby(playlist_id)[track_id].apply(list))
+
+        print('getting frequent itemsets')
+        te = TransactionEncoder()
+        te_array = te.fit(playlists).transform(playlists)
+        transactions_df = pd.DataFrame(te_array, columns=te.columns_)
+        frequent_itemsets = apriori(
+            transactions_df,
+            min_support=min_sup,
+            use_colnames=True,
+            max_len=2)
+        # return frequent_itemsets
+        print('mining rules')
+        rules = association_rules(
+            frequent_itemsets, metric='confidence', min_threshold=0.1)
+
+        # fix formatting for rules
+        rules['antecedents'] = (rules['antecedents']
+                                .astype(str)
+                                .apply(lambda x: x.split("'")[1]))
+        rules['consequents'] = (rules['consequents']
+                                .astype(str)
+                                .apply(lambda x: x.split("'")[1]))
+
+        # get antecedent/consequent track info
+        rules = rules.merge(
+            df[['id_track', 'name_track',
+                            'artist_names']].drop_duplicates(),
+            left_on='antecedents',
+            right_on='id_track')
+        rules = rules.merge(
+            rules[['id_track', 'name_track',
+                   'artist_names']].drop_duplicates(),
+            left_on='consequents',
+            right_on='id_track',
+            suffixes=('_antecedents', '_consequents'))
+
+        rules.drop_duplicates()
+        rules = rules.sort_values(by='confidence', ascending=False)
+
+        # get list of all the songs that show up here
+        antecedent_columns = ['antecedents', 'name_track_antecedents',
+                              'artist_names_antecedents', 'antecedent support']
+        consequent_columns = ['consequents', 'name_track_consequents',
+                              'artist_names_consequents', 'consequent support']
+        antecedents = house_rules[antecedent_columns].reset_index(drop=True)
+        consequents = house_rules[consequent_columns].reset_index(drop=True)
+        # rename columns
+        colnames = ['track_id', 'track_name', 'artist_names', 'support']
+        antecedents.columns = colnames
+        consequents.columns = colnames
+
+        tracks = pd.concat([antecedents, consequents], axis=0)
+        tracks = tracks.drop_duplicates().sort_values('support', ascending=False)
+
+        return (rules, tracks)
+
 
         ###############################################################
 s = GetSpotifyData('credentials.json')
@@ -272,42 +332,9 @@ house_tracks_and_playlists = house_tracks_and_playlists[house_mask]
 house_features = s.get_all_tracks_audio_features(
     house_tracks_and_playlists, 'id_track')
 
-
-s.fix_artists(house_features, artist_cols)
-
-test_artists = fix_artists(house_features, artist_cols)
-test_artists
-test_artists.columns
-len(test_artists['id_track'].unique())
-
-
-house_features.columns
 artist_cols = ['artists_0', 'artists_1', 'artists_2',
                'artists_3', 'artists_4', 'artists_5']
-
-
-test_artists.apply(lambda x: reduce(reduce_strings, x), axis=1)
-
-house_features[artist_cols].fillna({})
-
-sum(house_features['artists_5'].isna())
-
-house_features[~house_features['artists_5'].isna()]['artists_5']
-
-house_features[house_features['artists_0'].isna()][artist_cols+['id_track']]
-
-np.where(house_features['artists_5'].isna(), {}, house_features['artists_5'])
-
-test = house_features.copy()
-
-for col in artist_cols:
-    test[col] = np.where(test[col].isnull(), {}, test[col])
-
-test[artist_cols].head()
-
-test['artists_0'][0]
-
-reduce(lambda x, y: f"{x}|{test[y].get('id',)}", artist_cols, "")
-
-demo = pd.DataFrame([['A', 'B'], ['C', 'D']])
-reduce(lambda x, y: f"{demo[x]}|{demo[y]}", demo.columns)
+house_features = s.fix_artists(house_features, artist_cols)
+######################################################################
+house_features.columns
+[col for col in house_features.columns if 'artists_' in col]
