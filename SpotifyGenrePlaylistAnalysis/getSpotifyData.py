@@ -42,13 +42,13 @@ class GetSpotifyData:
             print('Authentication Failed')
             traceback.print_exc()
 
-    def search_playlists(self, q, limit=20, url='https://api.spotify.com/v1/search'):
+    def search_playlists(self, q, limit=50, url='https://api.spotify.com/v1/search'):
         response = requests.get(
             url,
             params={
                 'q': q,
                 'type': 'playlist',
-                'limit': '50'
+                'limit': limit
             },
             headers={
                 'Authorization': f'Bearer {self.token}'
@@ -185,7 +185,7 @@ class GetSpotifyData:
             print(response.status_code)
             print(response.reason)
 
-    def get_all_tracks_audio_features(self, df, column):
+    def get_all_tracks_audio_features(self, df, column='id_track'):
         if any(df[column].isna()):
             print(
                 'There is a Null Track Id in this column, please remove it and then try again')
@@ -293,7 +293,6 @@ class GetSpotifyData:
             right_on='id_track',
             suffixes=('_antecedents', '_consequents'))
 
-        rules.drop_duplicates()
         rules = rules.sort_values(by='confidence', ascending=False)
 
         # get list of all the songs that show up here
@@ -301,8 +300,8 @@ class GetSpotifyData:
                               'artist_names_antecedents', 'antecedent support']
         consequent_columns = ['consequents', 'name_track_consequents',
                               'artist_names_consequents', 'consequent support']
-        antecedents = house_rules[antecedent_columns].reset_index(drop=True)
-        consequents = house_rules[consequent_columns].reset_index(drop=True)
+        antecedents = rules[antecedent_columns].reset_index(drop=True)
+        consequents = rules[consequent_columns].reset_index(drop=True)
         # rename columns
         colnames = ['track_id', 'track_name', 'artist_names', 'support']
         antecedents.columns = colnames
@@ -313,28 +312,57 @@ class GetSpotifyData:
 
         return (rules, tracks)
 
+    def get_tracks_for_search_term(self, q, N):
+        print('getting playlists')
+        playlists = self.get_N_playlists(q, N)
+        print('getting tracks from playlists')
+        tracks = self.get_all_tracks_from_all_playlists(playlists)
+        tracks_and_playlists = tracks.merge(
+            playlists,
+            left_on='playlist_id',
+            right_on='id',
+            suffixes=('_track', '_playlist')
+        )
+        # filter out null track Ids
+        mask = ~tracks_and_playlists['id_track'].isna()
+        tracks_and_playlists = tracks_and_playlists[mask]
+        print('getting audio features for tracks')
+        track_features = self.get_all_tracks_audio_features(
+            tracks_and_playlists)
 
-        ###############################################################
-s = GetSpotifyData('credentials.json')
-s.authenticate()
+        # using list comprehension instead of hard coding incase # of artists columns varies
+        artist_cols = [
+            col for col in track_features.columns if 'artists_' in col]
+        track_features = self.fix_artists(track_features, artist_cols)
 
-######################################################################
-house = s.get_N_playlists('deep house', 100)
+        # filter down only to columns we care about
+        relevant_cols = [
+            'duration_ms_track',
+            'explicit',
+            'id_track',
+            'name_track',
+            'popularity',
+            'track',
+            'artist_ids',
+            'artist_names',
+            'album_id',
+            'album_name',
+            'album_release_date',
+            'album_release_date_precision',
+            'playlist_id',
+            'description_playlist',
+            'danceability',
+            'energy',
+            'key',
+            'loudness',
+            'mode',
+            'speechiness',
+            'acousticness',
+            'instrumentalness',
+            'liveness',
+            'valence',
+            'tempo',
+            'time_signature'
+        ]
 
-all_house_tracks = s.get_all_tracks_from_all_playlists(house)
-house_tracks_and_playlists = all_house_tracks.merge(house, left_on='playlist_id', right_on='id',
-                                                    suffixes=('_track', '_playlist'))
-# s.get_N_playlists('shoegaze', 123)
-# yacht = s.get_N_playlists('yacht rock', 33)
-house_mask = ~house_tracks_and_playlists['id_track'].isna()
-house_tracks_and_playlists = house_tracks_and_playlists[house_mask]
-
-house_features = s.get_all_tracks_audio_features(
-    house_tracks_and_playlists, 'id_track')
-
-artist_cols = ['artists_0', 'artists_1', 'artists_2',
-               'artists_3', 'artists_4', 'artists_5']
-house_features = s.fix_artists(house_features, artist_cols)
-######################################################################
-house_features.columns
-[col for col in house_features.columns if 'artists_' in col]
+        return track_features[relevant_cols].drop_duplicates()
